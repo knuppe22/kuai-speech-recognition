@@ -24,4 +24,10 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="bigram.txt" />
+    <Text Include="dictionary.txt" />
+    <Text Include="unigram.txt" />
+    <Text Include="vocabulary.txt" />
+  </ItemGroup>
 </Project>
