@@ -8,6 +8,8 @@
 using namespace std;
 
 vector<pair<string, vector<int>>> dic;	// (name, vector of phones)
+int nstate = 1;		// Initial state
+double** t;
 
 int phone2int(string phone) {
 	if (phone.compare("f") == 0)
@@ -73,6 +75,11 @@ void read_dic() {
 			tokenized = strtok(NULL, " ");
 		} while (tokenized != NULL);
 		dic.push_back(make_pair(name, phones));
+	}
+
+	t = new double*[nstate];
+	for (int i = 0; i < nstate; i++) {
+		t[i] = new double[nstate];
 	}
 
 	fclose(fp);
