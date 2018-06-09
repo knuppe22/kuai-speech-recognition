@@ -7,9 +7,16 @@
 
 using namespace std;
 
-vector<pair<string, vector<int>>> dic;	// (name, vector of phones)
+typedef struct {
+	string name;
+	int head;
+	int tail;
+	vector<int> phones;
+} wordType;
+
+vector<wordType> dic;	// (name, vector of phones)
 int nstate = 1;		// Initial state
-double** t;
+double** t;			// Transition probability matrix
 
 int phone2int(string phone) {
 	if (phone.compare("f") == 0)
@@ -57,24 +64,38 @@ int phone2int(string phone) {
 	else
 		return -1;
 }
+int word2int(string word) {
+	for (int i = 0; i<dic.size(); i++) {
+		if (word.compare(dic[i].name) == 0)
+			return i;
+	}
+	return -1;
+}
 
 void read_dic() {
 	FILE *fp = fopen("dictionary.txt", "r");
 
 	while (!feof(fp)) {
+		wordType word;
+		word.head = nstate;
 		char line[100];
-		vector<int> phones;
 		fgets(line, 100, fp);
 		if (line[strlen(line) - 1] == '\n')
 			line[strlen(line) - 1] = '\0';
 		char *tokenized = strtok(line, "\t");
-		string name(tokenized);
+		word.name = string(tokenized);
 		tokenized = strtok(NULL, " ");
 		do {
-			phones.push_back(phone2int(string(tokenized)));
+			string phone(tokenized);
+			if (phone.compare("sp") == 0)
+				nstate++;
+			else
+				nstate += 3;
+			word.phones.push_back(phone2int(phone));
 			tokenized = strtok(NULL, " ");
 		} while (tokenized != NULL);
-		dic.push_back(make_pair(name, phones));
+		word.tail = nstate - 1;
+		dic.push_back(word);
 	}
 
 	t = new double*[nstate];
@@ -84,16 +105,50 @@ void read_dic() {
 
 	fclose(fp);
 }
+void read_prob() {
+	FILE *uni = fopen("unigram.txt", "r");
+
+	while (!feof(uni)) {
+		char buf[30];
+		double prop;
+		fscanf(uni, "%s %lf", buf, &prop);
+		string word(buf);
+		for (int i = 0; i < 3; i++) {
+			t[0][dic[word2int(word)].head + i] = prop;
+		}
+	}
+
+	fclose(uni);
+
+	FILE *bi = fopen("bigram.txt", "r");
+
+	while (!feof(bi)) {
+		char buf1[30];
+		char buf2[30];
+		double prop;
+		fscanf(bi, "%s %s %lf", buf1, buf2, &prop);
+		string word1(buf1);
+		string word2(buf2);
+		if (dic[word2int(word1)].phones.back() == 20) {		// if word1 ends with "sp"
+			for (int j = 0; j < 3; j++) {
+				t[dic[word2int(word1)].tail][dic[word2int(word2)].head + j] = prop;
+			}
+		}
+		else {
+			for (int i = 0; i < 3; i++) {
+				for (int j = 0; j < 3; j++) {
+					t[dic[word2int(word1)].tail - i][dic[word2int(word2)].head + j] = prop;
+				}
+			}
+		}
+	}
+
+	fclose(bi);
+}
 
 int main() {
 	read_dic();
-	for (int i = 0; i < dic.size(); i++) {
-		cout << dic[i].first << " ";
-		for (int j = 0; j < dic[i].second.size(); j++) {
-			cout << dic[i].second[j] << " ";
-		}
-		cout << endl;
-	}
+	read_prob();
 
 	system("pause");
 	return 0;
