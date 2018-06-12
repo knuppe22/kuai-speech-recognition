@@ -225,8 +225,8 @@ void read_prob() {
 
 	fclose(bi);
 }
-double normal(double x, double mean, double var) {
-	return exp(-pow(x - mean, 2) / (2 * var)) / sqrt(2 * var * M_PI);
+double log_normal(double x, double mean, double var) {
+	return -pow(x - mean, 2) / (2 * var) - log(2 * var * M_PI) / 2;
 }
 void viterbi(double **ob, pair<double, vector<int>> **pm, int d, int lastf) {
 	int state = 0;
@@ -238,20 +238,20 @@ void viterbi(double **ob, pair<double, vector<int>> **pm, int d, int lastf) {
 				double sum = 0.0;
 				for (int l = 0; l < N_PDF; l++) {
 					pdfType pdf = phones[phone].state[k].pdf[l];
-					double pi = pdf.weight;
+					double logpi = log(pdf.weight);
 					for (int m = 0; m < d; m++) {
-						pi *= normal(ob[lastf][m], pdf.mean[m], pdf.var[m]);
+						logpi += log_normal(ob[lastf][m], pdf.mean[m], pdf.var[m]);
 					}
-					sum += pi;
+					sum += exp(logpi);
 				}
 				if (lastf == 0) {
-					pm[lastf][state].first = t[0][state] + log(sum);
+					pm[lastf][state].first = log(t[0][state]) + log(sum);
 					pm[lastf][state].second.push_back(state);
 				}
 				else {
 					int argmax = 0;
 					for (int l = 0; l < nstate; l++) {
-						double result = pm[lastf - 1][l].first + t[l][state] + log(sum);
+						double result = pm[lastf - 1][l].first + log(t[l][state]) + log(sum);
 						if (result > pm[lastf][state].first) {
 							pm[lastf][state].first = result;
 							argmax = l;
@@ -270,49 +270,78 @@ int main() {
 	read_dic();
 	make_t();
 	read_prob();
-	
-	for (int i = 0; i < nstate; i++) {
-		for (int j = 0; j < nstate; j++) {
-			t[i][j] = log(t[i][j]);
+
+	ifstream ref("reference.txt");
+	ofstream rec("recognized.txt");
+	string s;
+	ref >> s;
+	rec << s << endl;
+	while (!ref.eof()) {
+		string line;
+		ref >> line;
+		line.erase(0, 1);
+		line.erase(line.size() - 1, 1);
+		line.erase(line.size() - 3, 3);
+		rec << "\"" << line << "rec\"" << endl;
+		ifstream fin(line + "txt");
+
+		int f, d;
+		fin >> f >> d;
+		double **ob = new double*[f];											// Observed matrix (frame, dim)
+		pair<double, vector<int>> **pm = new pair<double, vector<int>>*[f];		// Probability matrix (frame, state), vector of argmax
+		for (int i = 0; i < f; i++) {
+			ob[i] = new double[d];
+			for (int j = 0; j < d; j++) {
+				fin >> ob[i][j];
+			}
+
+			pm[i] = new pair<double, vector<int>>[nstate];
+			for (int j = 0; j < nstate; j++) {
+				pm[i][j].first = -INFINITY;
+			}
 		}
+		for (int i = 0; i < f; i++) {
+			viterbi(ob, pm, d, i);
+		}
+		int argmax = 0;
+		double max = -INFINITY;
+		for (int i = 0; i < nstate; i++) {
+			if (pm[f - 1][i].first > max) {
+				max = pm[f - 1][i].first;
+				argmax = i;
+			}
+		}
+		for (int i = 0; i < f; i++) {
+			int state = pm[f - 1][argmax].second[i];
+			int word = get<0>(state_idx(state));
+			if (word == 0) {
+				continue;
+			}
+			else if (i == 0) {
+				rec << int2word(word) << endl;
+			}
+			else if (word != get<0>(state_idx(pm[f - 1][argmax].second[i - 1]))) {
+				rec << int2word(word) << endl;
+			}
+			else if (state < pm[f - 1][argmax].second[i - 1]) {
+				rec << int2word(word) << endl;
+			}
+		}
+
+		for (int i = 0; i < f; i++) {
+			delete[] ob[i];
+			delete[] pm[i];
+		}
+		delete[] ob;
+		delete[] pm;
+
+		while (line.compare(".") != 0) {
+			ref >> line;
+		}
+		rec << "." << endl;
 	}
 
-	string path = ".\\tst\\f\\ak\\44z5938.txt";
-	ifstream fin(path);
-	int f, d;
-	fin >> f >> d;
-	double **ob = new double*[f];											// Observed matrix (frame, dim)
-	pair<double, vector<int>> **pm = new pair<double, vector<int>>*[f];		// Probability matrix (frame, state), vector of argmax
-	for (int i = 0; i < f; i++) {
-		ob[i] = new double[d];
-		for (int j = 0; j < d; j++) {
-			fin >> ob[i][j];
-		}
-		
-		pm[i] = new pair<double, vector<int>>[nstate];
-		for (int j = 0; j < nstate; j++) {
-			pm[i][j].first = -INFINITY;
-		}
-	}
-	for (int i = 0; i < f; i++) {
-		viterbi(ob, pm, d, i);
-	}
-	int argmax = 0;
-	double max = -INFINITY;
-	for (int i = 0; i < nstate; i++) {
-		if (pm[f - 1][i].first > max) {
-			max = pm[f - 1][i].first;
-			argmax = i;
-		}
-	}
-	for (int i = 0; i < f; i++) {
-		int state = pm[f - 1][argmax].second[i];
-		
-		cout << int2word(get<0>(state_idx(state))) << " ";
-		cout << int2phone(dic[get<0>(state_idx(state))].phones[get<1>(state_idx(state))]);
-		cout << get<2>(state_idx(state)) << endl;
-	}
-
-	system("pause");
+	ref.close();
+	rec.close();
 	return 0;
 }
