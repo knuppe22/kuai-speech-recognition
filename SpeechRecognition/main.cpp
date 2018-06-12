@@ -65,12 +65,21 @@ int phone2int(string phone) {
 	else
 		return -1;
 }
-int word2int(string word) {
+int word_count(string word) {
+	int count = 0;
 	for (int i = 0; i < dic.size(); i++) {
 		if (word.compare(dic[i].name) == 0)
-			return i;
+			count++;
 	}
-	return -1;
+	return count;
+}
+vector<int> word2int(string word) {
+	vector<int> v;
+	for (int i = 0; i < dic.size(); i++) {
+		if (word.compare(dic[i].name) == 0)
+			v.push_back(i);
+	}
+	return v;
 }
 int nstate_of(int phone) {
 	return (phone == 20) ? 1 : 3;
@@ -160,9 +169,11 @@ void read_prob() {
 		char buf[30];
 		double prop;
 		fscanf(uni, "%s %lf", buf, &prop);
-		int word = word2int(string(buf));
-		for (int i = dic[word].head; i <= dic[word].tail; i++) {
-			t[0][i] += prop * in[i];
+		vector<int> word = word2int(string(buf));
+		for (int h = 0; h < word.size(); h++) {
+			for (int i = dic[word[h]].head; i <= dic[word[h]].tail; i++) {
+				t[0][i] += prop / word.size() * in[i];
+			}
 		}
 	}
 
@@ -175,11 +186,15 @@ void read_prob() {
 		char buf2[30];
 		double prop;
 		fscanf(bi, "%s %s %lf", buf1, buf2, &prop);
-		int word1 = word2int(string(buf1));
-		int word2 = word2int(string(buf2));
-		for (int i = dic[word1].head; i <= dic[word1].tail; i++) {
-			for (int j = dic[word2].head; j <= dic[word2].tail; j++) {
-				t[i][j] += prop * out[i] * in[j];
+		vector<int> word1 = word2int(string(buf1));
+		vector<int> word2 = word2int(string(buf2));
+		for (int g = 0; g < word1.size(); g++) {
+			for (int h = 0; h < word2.size(); h++) {
+				for (int i = dic[word1[g]].head; i <= dic[word1[g]].tail; i++) {
+					for (int j = dic[word2[h]].head; j <= dic[word2[h]].tail; j++) {
+						t[i][j] += prop / word1.size() / word2.size() * out[i] * in[j];
+					}
+				}
 			}
 		}
 	}
