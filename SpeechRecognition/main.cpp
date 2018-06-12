@@ -16,7 +16,8 @@ typedef struct {
 
 vector<wordType> dic;	// (name, vector of phones)
 int nstate = 1;		// Initial state
-double** t;			// Transition probability matrix
+double **t;			// Transition probability matrix
+double *in, *out;
 
 int phone2int(string phone) {
 	if (phone.compare("f") == 0)
@@ -65,11 +66,14 @@ int phone2int(string phone) {
 		return -1;
 }
 int word2int(string word) {
-	for (int i = 0; i<dic.size(); i++) {
+	for (int i = 0; i < dic.size(); i++) {
 		if (word.compare(dic[i].name) == 0)
 			return i;
 	}
 	return -1;
+}
+int nstate_of(int phone) {
+	return (phone == 20) ? 1 : 3;
 }
 
 void read_dic() {
@@ -86,25 +90,69 @@ void read_dic() {
 		word.name = string(tokenized);
 		tokenized = strtok(NULL, " ");
 		do {
-			string phone(tokenized);
-			if (phone.compare("sp") == 0)
-				nstate++;
-			else
-				nstate += 3;
-			word.phones.push_back(phone2int(phone));
+			int phone = phone2int(string(tokenized));
+			nstate += nstate_of(phone);
+			word.phones.push_back(phone);
 			tokenized = strtok(NULL, " ");
 		} while (tokenized != NULL);
 		word.tail = nstate - 1;
 		dic.push_back(word);
 	}
 
+	fclose(fp);
+}
+
+void make_t() {
 	t = new double*[nstate];
 	for (int i = 0; i < nstate; i++) {
 		t[i] = new double[nstate];
+		for (int j = 0; j < nstate; j++) {
+			t[i][j] = 0.0;
+		}
+	}
+	in = new double[nstate];
+	out = new double[nstate];
+	for (int i = 0; i < nstate; i++) {
+		in[i] = 1.0;
+		out[i] = 1.0;
 	}
 
-	fclose(fp);
+	// word hmm ¸¸µé±â
+	for (int i = 0; i < dic.size(); i++) {
+		// forward
+		int state = dic[i].head;
+		for (int j = 0; j < dic[i].phones.size(); j++) {
+			int phone = dic[i].phones[j];
+			for (int k = 0; k < nstate_of(phone); k++) {
+				in[state + k] *= phones[phone].tp[0][k + 1];
+				if (j > 0) {
+					int prev = dic[i].phones[j - 1];
+					in[state + k] *= phones[prev].tp[0][nstate_of(prev) + 1];
+				}
+
+				for (int l = 0; l < nstate_of(phone); l++) {
+					t[state + k][state + l] = phones[phone].tp[k + 1][l + 1];
+				}
+			}
+			state += nstate_of(phone);
+		}
+		// backward
+		state = dic[i].tail - nstate_of(dic[i].phones.back()) + 1;
+		for (int j = dic[i].phones.size() - 1; j >= 0; j--) {
+			int phone = dic[i].phones[j];
+			for (int k = 0; k < nstate_of(phone); k++) {
+				out[state + k] *= phones[phone].tp[k + 1][nstate_of(phone) + 1];
+				if (j < dic[i].phones.size() - 1) {
+					int next = dic[i].phones[j + 1];
+					out[state + k] *= phones[next].tp[0][nstate_of(next) + 1];
+				}
+			}
+			if (j > 0)
+				state -= nstate_of(dic[i].phones[j - 1]);
+		}
+	}
 }
+
 void read_prob() {
 	FILE *uni = fopen("unigram.txt", "r");
 
@@ -112,9 +160,9 @@ void read_prob() {
 		char buf[30];
 		double prop;
 		fscanf(uni, "%s %lf", buf, &prop);
-		string word(buf);
-		for (int i = 0; i < 3; i++) {
-			t[0][dic[word2int(word)].head + i] = prop;
+		int word = word2int(string(buf));
+		for (int i = dic[word].head; i <= dic[word].tail; i++) {
+			t[0][i] += prop * in[i];
 		}
 	}
 
@@ -127,18 +175,11 @@ void read_prob() {
 		char buf2[30];
 		double prop;
 		fscanf(bi, "%s %s %lf", buf1, buf2, &prop);
-		string word1(buf1);
-		string word2(buf2);
-		if (dic[word2int(word1)].phones.back() == 20) {		// if word1 ends with "sp"
-			for (int j = 0; j < 3; j++) {
-				t[dic[word2int(word1)].tail][dic[word2int(word2)].head + j] = prop;
-			}
-		}
-		else {
-			for (int i = 0; i < 3; i++) {
-				for (int j = 0; j < 3; j++) {
-					t[dic[word2int(word1)].tail - i][dic[word2int(word2)].head + j] = prop;
-				}
+		int word1 = word2int(string(buf1));
+		int word2 = word2int(string(buf2));
+		for (int i = dic[word1].head; i <= dic[word1].tail; i++) {
+			for (int j = dic[word2].head; j <= dic[word2].tail; j++) {
+				t[i][j] += prop * out[i] * in[j];
 			}
 		}
 	}
@@ -148,7 +189,14 @@ void read_prob() {
 
 int main() {
 	read_dic();
+	make_t();
 	read_prob();
+
+	for (int i = 0; i < nstate; i++) {
+		for (int j = 0; j < nstate; j++) {
+			cout << i << ":" << j << " = " << t[i][j] << endl;
+		}
+	}
 
 	system("pause");
 	return 0;
