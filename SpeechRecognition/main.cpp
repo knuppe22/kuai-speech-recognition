@@ -1,8 +1,12 @@
+#define _USE_MATH_DEFINES
 #include <iostream>
+#include <fstream>
 #include <vector>
+#include <tuple>
 #include <algorithm>
 #include <string>
 #include <cmath>
+#include <io.h>
 #include "hmm.h"
 
 using namespace std;
@@ -19,6 +23,12 @@ int nstate = 1;		// Initial state
 double **t;			// Transition probability matrix
 double *in, *out;
 
+string int2phone(int phone) {
+	return phones[phone].name;
+}
+string int2word(int word) {
+	return dic[word].name;
+}
 int phone2int(string phone) {
 	if (phone.compare("f") == 0)
 		return 0;
@@ -73,6 +83,23 @@ int word_count(string word) {
 	}
 	return count;
 }
+int nstate_of(int phone) {
+	return (phone == 20) ? 1 : 3;
+}
+tuple<int, int, int> state_idx(int n) {
+	int state = 0;
+	for (int i = 0; i < dic.size(); i++) {
+		for (int j = 0; j < dic[i].phones.size(); j++) {
+			for (int k = 0; k < nstate_of(dic[i].phones[j]); k++) {
+				state++;
+				if (n == state)
+					return make_tuple(i, j, k);
+			}
+		}
+	}
+
+	return make_tuple(-1, -1, -1);
+}
 vector<int> word2int(string word) {
 	vector<int> v;
 	for (int i = 0; i < dic.size(); i++) {
@@ -80,9 +107,6 @@ vector<int> word2int(string word) {
 			v.push_back(i);
 	}
 	return v;
-}
-int nstate_of(int phone) {
-	return (phone == 20) ? 1 : 3;
 }
 
 void read_dic() {
@@ -201,16 +225,92 @@ void read_prob() {
 
 	fclose(bi);
 }
+double normal(double x, double mean, double var) {
+	return exp(-pow(x - mean, 2) / (2 * var)) / sqrt(2 * var * M_PI);
+}
+void viterbi(double **ob, pair<double, vector<int>> **pm, int d, int lastf) {
+	int state = 0;
+	for (int i = 0; i < dic.size(); i++) {
+		for (int j = 0; j < dic[i].phones.size(); j++) {
+			int phone = dic[i].phones[j];
+			for (int k = 0; k < nstate_of(phone); k++) {
+				state++;
+				double sum = 0.0;
+				for (int l = 0; l < N_PDF; l++) {
+					pdfType pdf = phones[phone].state[k].pdf[l];
+					double pi = pdf.weight;
+					for (int m = 0; m < d; m++) {
+						pi *= normal(ob[lastf][m], pdf.mean[m], pdf.var[m]);
+					}
+					sum += pi;
+				}
+				if (lastf == 0) {
+					pm[lastf][state].first = t[0][state] + log(sum);
+					pm[lastf][state].second.push_back(state);
+				}
+				else {
+					int argmax = 0;
+					for (int l = 0; l < nstate; l++) {
+						double result = pm[lastf - 1][l].first + t[l][state] + log(sum);
+						if (result > pm[lastf][state].first) {
+							pm[lastf][state].first = result;
+							argmax = l;
+						}
+					}
+					pm[lastf][state].second.resize(pm[lastf - 1][argmax].second.size());
+					copy(pm[lastf - 1][argmax].second.begin(), pm[lastf - 1][argmax].second.end(), pm[lastf][state].second.begin());
+					pm[lastf][state].second.push_back(state);
+				}
+			}
+		}
+	}
+}
 
 int main() {
 	read_dic();
 	make_t();
 	read_prob();
-
+	
 	for (int i = 0; i < nstate; i++) {
 		for (int j = 0; j < nstate; j++) {
-			cout << i << ":" << j << " = " << t[i][j] << endl;
+			t[i][j] = log(t[i][j]);
 		}
+	}
+
+	string path = ".\\tst\\f\\ak\\44z5938.txt";
+	ifstream fin(path);
+	int f, d;
+	fin >> f >> d;
+	double **ob = new double*[f];											// Observed matrix (frame, dim)
+	pair<double, vector<int>> **pm = new pair<double, vector<int>>*[f];		// Probability matrix (frame, state), vector of argmax
+	for (int i = 0; i < f; i++) {
+		ob[i] = new double[d];
+		for (int j = 0; j < d; j++) {
+			fin >> ob[i][j];
+		}
+		
+		pm[i] = new pair<double, vector<int>>[nstate];
+		for (int j = 0; j < nstate; j++) {
+			pm[i][j].first = -INFINITY;
+		}
+	}
+	for (int i = 0; i < f; i++) {
+		viterbi(ob, pm, d, i);
+	}
+	int argmax = 0;
+	double max = -INFINITY;
+	for (int i = 0; i < nstate; i++) {
+		if (pm[f - 1][i].first > max) {
+			max = pm[f - 1][i].first;
+			argmax = i;
+		}
+	}
+	for (int i = 0; i < f; i++) {
+		int state = pm[f - 1][argmax].second[i];
+		
+		cout << int2word(get<0>(state_idx(state))) << " ";
+		cout << int2phone(dic[get<0>(state_idx(state))].phones[get<1>(state_idx(state))]);
+		cout << get<2>(state_idx(state)) << endl;
 	}
 
 	system("pause");
